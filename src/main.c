@@ -1,14 +1,34 @@
 #include <include/ecs_meta.h>
+#include <stdarg.h>
+
+static int indent = 0;
+
+void print_indent(
+    const char *fmt, 
+    ...) 
+{
+    va_list args;
+    printf("%*s", indent * 4, "");
+
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+}
 
 static
 uint32_t print_value(
+    ecs_world_t *world,
     void *base, 
     ecs_meta_cache_op_t *ops, 
     uint32_t op, 
     uint32_t op_count);
 
 static
-void print_primitive(void *base, ecs_meta_cache_op_t *op) {
+void print_primitive(
+    ecs_world_t *world,
+    void *base, 
+    ecs_meta_cache_op_t *op) 
+{
     switch(op->data.primitive_kind) {
     case EcsBool:
         if (ecs_meta_get_bool(base, op)) {
@@ -27,13 +47,13 @@ void print_primitive(void *base, ecs_meta_cache_op_t *op) {
     case EcsU16:
     case EcsU32:
     case EcsU64:
-        printf("%lu", ecs_meta_get_uint(base, op));
+        printf("%llu", ecs_meta_get_uint(base, op));
         break;
     case EcsI8:
     case EcsI16:
     case EcsI32:
     case EcsI64:
-        printf("%ld", ecs_meta_get_int(base, op));
+        printf("%lld", ecs_meta_get_int(base, op));
         break;
     case EcsF32:
     case EcsF64:
@@ -44,20 +64,36 @@ void print_primitive(void *base, ecs_meta_cache_op_t *op) {
         break;
     case EcsString:
         printf("\"%s\"", ecs_meta_get_string(base, op));
-    case EcsEntity:
-        printf("%ld", ecs_meta_get_entity(base, op));
         break;
+    case EcsEntity: {
+        ecs_entity_t e = ecs_meta_get_entity(base, op);
+        EcsId *id = ecs_get_ptr(world, e, EcsId);
+        if (!id) {
+            printf("%lld", ecs_meta_get_entity(base, op));
+        } else {
+            printf("%s", *id);
+        }
+        break;
+    }
     }
 }
 
 static
-void print_enum(void *base, ecs_meta_cache_op_t *op) {
+void print_enum(
+    ecs_world_t *world,
+    void *base, 
+    ecs_meta_cache_op_t *op) 
+{
     int32_t value = ecs_meta_get_enum(base, op);
     printf("%s", ecs_meta_enum_to_string(value, op));
 }
 
 static
-void print_bitmask(void *base, ecs_meta_cache_op_t *op) {
+void print_bitmask(
+    ecs_world_t *world,
+    void *base, 
+    ecs_meta_cache_op_t *op) 
+{
     ut_strbuf buf = UT_STRBUF_INIT;
     uint64_t value = ecs_meta_get_bitmask(base, op);
     ecs_meta_bitmask_to_string(value, op, &buf);
@@ -68,19 +104,48 @@ void print_bitmask(void *base, ecs_meta_cache_op_t *op) {
 
 static
 uint32_t print_struct(
+    ecs_world_t *world,
     void *base, 
     ecs_meta_cache_op_t *ops, 
     uint32_t op, 
     uint32_t op_count)
 {
     printf("{\n");
-    op = print_value(base, ops, op, op_count);
-    printf("}\n");
+    indent ++;
+    op = print_value(world, base, ops, op, op_count);
+    indent --;
+    print_indent("}\n");
     return op;
 }
 
 static
+void print_vector(
+    ecs_world_t *world,
+    void *base,
+    ecs_meta_cache_op_t *op)
+{
+    ecs_vector_t *vector = ecs_meta_get_vector(base, op);
+    uint32_t count = ecs_vector_count(vector);
+    void *element = ecs_vector_first(vector);
+    
+    ecs_vector_t *element_ops_vec = op->data.element_ops;
+    ecs_meta_cache_op_t *element_ops = ecs_vector_first(element_ops_vec);
+    uint32_t element_ops_count = ecs_vector_count(element_ops_vec);
+    uint32_t size = element_ops[0].size;
+
+    printf("[\n");
+    indent ++;
+    for (int i = 0; i < count; i ++) {
+        print_value(world, element, element_ops, 0, element_ops_count);
+        element = ECS_OFFSET(element, size);
+    }
+    indent --;
+    print_indent("]");
+}
+
+static
 uint32_t print_value(
+    ecs_world_t *world,
     void *base, 
     ecs_meta_cache_op_t *ops, 
     uint32_t op, 
@@ -94,25 +159,35 @@ uint32_t print_value(
         /* Loop count (>1 for arrays) */
         for (uint32_t i = 0; i < cur->count; i ++) {
             if (cur->name) {
-                printf("%s: ", cur->name);
+                print_indent("%s: ", cur->name);
+            } else {
+                print_indent("");
             }
 
             switch(cur->kind) {
             case EcsOpPrimitive:
-                print_primitive(base, cur);
+                print_primitive(world, base, cur);
                 break;
             case EcsOpEnum:
-                print_enum(base, cur);
+                print_enum(world, base, cur);
                 break;
             case EcsOpBitmask:
-                print_bitmask(base, cur);
+                print_bitmask(world, base, cur);
                 break;
-            case EcsOpPush:
-                op = print_struct(base, ops, op + 1, op_count);
+            case EcsOpPush: {
+                uint32_t next_op = print_struct(world, base, ops, op + 1, op_count);
+                if (i == cur->count - 1) {
+                    op = next_op;
+                } else {
+                    base = ECS_OFFSET(base, size);
+                }
+            }
             case EcsOpPop:
                 return op;
             case EcsOpArray:
+                break;
             case EcsOpVector:
+                print_vector(world, base, cur);
             case EcsOpMap:
             case EcsOpNothing:
                 break;
@@ -121,49 +196,42 @@ uint32_t print_value(
             printf("\n");
         }
     }
+
+    return op;
 }
 
 void PrintValue(ecs_rows_t *rows) {
-    ECS_COLUMN_ENTITY(rows, EcsPosition2D, 1);
-    ECS_COLUMN_COMPONENT(rows, EcsMetaCache, 2);
+    ECS_COLUMN(rows, EcsId, id, 1);
+    ECS_COLUMN_ENTITY(rows, component, 2);
+    ECS_COLUMN_COMPONENT(rows, EcsMetaCache, 3);
     
-    EcsMetaCache *p_cache = ecs_get_ptr(rows->world, EcsPosition2D, EcsMetaCache);
+    EcsMetaCache *p_cache = ecs_get_ptr(rows->world, component, EcsMetaCache);
     if (!p_cache) {
-        printf("No cache for component %s\n", ecs_get_id(rows->world, EcsPosition2D));
+        printf("No cache for component %s\n", ecs_get_id(rows->world, component));
         return;
     }
 
     ecs_meta_cache_op_t *ops = ecs_vector_first(p_cache->ops);
     uint32_t op_count = ecs_vector_count(p_cache->ops);
-    void *base = _ecs_column(rows, 1, false);
+    void *base = _ecs_column(rows, 2, false);
 
     /* Loop entities */
     for (uint32_t e = 0; e < rows->count; e ++) {
-        print_value(base, ops, 0, op_count);
+        printf("%s: ", id[e]);
+        print_value(rows->world, base, ops, 0, op_count);
         base = ECS_OFFSET(base, ops[0].size);
+        printf("\n");
     }
 }
 
 int main(int argc, char *argv[]) {
-    /* Create the world, pass arguments for overriding the number of threads,fps
-     * or for starting the admin dashboard (see flecs.h for details). */
     ecs_world_t *world = ecs_init_w_args(argc, argv);
 
     ECS_IMPORT(world, EcsComponentsMeta, 0);
-    ECS_IMPORT(world, EcsComponentsTransform, ECS_REFLECTION);
 
-    // TODO - load flecs.components.transform at runtime */
-    //ecs_import_from_library(world, "flecs.components.transform", "EcsComponentsTransform", 0);
-
-    ECS_TYPE(world, Type, EcsPosition2D);
-    ECS_SYSTEM(world, PrintValue, EcsManual, EcsPosition2D, ID.EcsMetaCache);
-
-    for (int i = 0; i < 10; i ++) {
-        ecs_set(world, 0, EcsPosition2D, {i, i * 2});
-    }
+    ECS_SYSTEM(world, PrintValue, EcsManual, EcsId, EcsMetaStruct, ID.EcsMetaCache);
 
     ecs_run(world, PrintValue, 0, NULL);
 
-    /* Cleanup */
     return ecs_fini(world);
 }
