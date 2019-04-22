@@ -227,7 +227,7 @@ void PrintValue(ecs_rows_t *rows) {
 int main(int argc, char *argv[]) {
     ecs_world_t *world = ecs_init_w_args(argc, argv);
 
-    ECS_IMPORT(world, EcsComponentsMeta, 0);
+    ECS_IMPORT(world, FlecsComponentsMeta, 0);
 
     ECS_SYSTEM(world, PrintValue, EcsManual, EcsId, EcsMetaStruct, ID.EcsMetaCache);
 
