@@ -20,22 +20,20 @@
 /* Generated includes are specific to the bake environment. If a project is not
  * built with bake, it will have to provide alternative methods for including
  * its dependencies. */
-#ifdef __BAKE__
 /* Headers of public dependencies */
-#include <flecs>
-#include <flecs.components.transform>
-#include <flecs.components.meta>
-#include <bake.util>
+#include <flecs.h>
+#include <flecs_components_transform.h>
+#include <flecs_components_meta.h>
+#include <bake_util.h>
 
 /* Headers of private dependencies */
 #ifdef ECS_META_IMPL
 /* No dependencies */
 #endif
-#endif
 
 /* Convenience macro for exporting symbols */
 #ifndef ECS_META_STATIC
-  #if ECS_META_IMPL && defined _MSC_VER
+  #if ECS_META_IMPL && (defined(_MSC_VER) || defined(__MINGW32__))
     #define ECS_META_EXPORT __declspec(dllexport)
   #elif ECS_META_IMPL
     #define ECS_META_EXPORT __attribute__((__visibility__("default")))
