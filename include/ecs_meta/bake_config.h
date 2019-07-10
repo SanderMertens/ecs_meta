@@ -17,14 +17,13 @@
 #ifndef ECS_META_BAKE_CONFIG_H
 #define ECS_META_BAKE_CONFIG_H
 
-/* Generated includes are specific to the bake environment. If a project is not
- * built with bake, it will have to provide alternative methods for including
- * its dependencies. */
 /* Headers of public dependencies */
 #include <flecs.h>
 #include <flecs_components_transform.h>
 #include <flecs_components_meta.h>
+#ifdef __BAKE__
 #include <bake_util.h>
+#endif
 
 /* Headers of private dependencies */
 #ifdef ECS_META_IMPL

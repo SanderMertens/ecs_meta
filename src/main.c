@@ -213,7 +213,7 @@ void PrintValue(ecs_rows_t *rows) {
 
     ecs_meta_cache_op_t *ops = ecs_vector_first(p_cache->ops);
     uint32_t op_count = ecs_vector_count(p_cache->ops);
-    void *base = _ecs_column(rows, 2, false);
+    void *base = _ecs_column(rows, 0, 2);
 
     /* Loop entities */
     for (uint32_t e = 0; e < rows->count; e ++) {
@@ -229,7 +229,7 @@ int main(int argc, char *argv[]) {
 
     ECS_IMPORT(world, FlecsComponentsMeta, 0);
 
-    ECS_SYSTEM(world, PrintValue, EcsManual, EcsId, EcsMetaStruct, ID.EcsMetaCache);
+    ECS_SYSTEM(world, PrintValue, EcsManual, EcsId, EcsMetaStruct, .EcsMetaCache);
 
     ecs_run(world, PrintValue, 0, NULL);
 
